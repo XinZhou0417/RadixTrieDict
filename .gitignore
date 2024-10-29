@@ -2,6 +2,8 @@
 .idea
 .local
 tests
+build
+bin
 
 */*.o
 */*.out
