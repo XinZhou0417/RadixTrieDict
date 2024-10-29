@@ -13,7 +13,7 @@ data.c :
 #include <string.h>
 #include <assert.h>
 
-#include "data.h"
+#include "cafe_data.h"
 
 
 struct CafeInfo {

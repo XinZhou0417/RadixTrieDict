@@ -17,7 +17,7 @@ driver.c :
 #include <string.h>
 #include <assert.h>
 
-#include "data.h"
+#include "cafe_data.h"
 #include "dictionary.h"
 #include "sorted_array_dictionary.h"
 #include "radix_tree_dictionary.h"
@@ -41,7 +41,7 @@ void* readData(char* dataFilename, int stage);
 void queryDict(char* outFilename, void* dict, int stage);
 void freeAll(void* dict, int stage);
 
-int main(int argc, char* argv[]) {
+int run_cafe_address_book(int argc, char* argv[]) {
     int stage;
     char *dataFilename, *outFilename;
     
@@ -68,7 +68,6 @@ void processArg(int argc, char* argv[], int* stage) {
     if (argc < COMMAND_LINE_ARG_NUM || atoi(argv[1])<STAGE_MIN || atoi(argv[1])>STAGE_MAX) {
         fprintf(stderr, "[!Invalid input!]\n");
         fprintf(stderr, "[Usage]: %s  stage  dataFilename  outputFilename\n", argv[0]);
-        fprintf(stderr, "  stage is 1 by default in this assignment.\n");
         exit(EXIT_FAILURE);
     }
     *stage = atoi(argv[1]);
