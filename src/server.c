@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <cjson/cJSON.h>
 
 int create_listening_socket(char* service);
 
@@ -43,8 +44,7 @@ int main(int argc, char** argv) {
 	// Accept a connection - blocks until a connection is ready to be accepted
 	// Get back a new file descriptor to communicate on
 	client_addr_size = sizeof client_addr;
-	newsockfd =
-		accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_size);
+	newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_size);
 	if (newsockfd < 0) {
 		perror("accept");
 		exit(EXIT_FAILURE);
@@ -57,25 +57,32 @@ int main(int argc, char** argv) {
 	port = ntohs(client_addr.sin_port);
 	fprintf(stdout, "new connection from %s:%d on socket %d\n", ip, port, newsockfd);
 
-	// Read characters from the connection, then process
-	n = read(newsockfd, buffer, 255); // n is number of characters read
-	if (n < 0) {
-		perror("read");
-		exit(EXIT_FAILURE);
-	}
-	// Null-terminate string
-	buffer[n] = '\0';
+	while (1) {
+		// Read characters from the connection, then process
+		n = read(newsockfd, buffer, 255); // n is number of characters read
+		if (n < 0) {
+			perror("read");
+			exit(EXIT_FAILURE);
+		}
+		// Null-terminate string
+		buffer[n] = '\0';
 
-	// Write message back
-	fprintf(stdout, "Here is the message: %s\n", buffer);
-	n = write(newsockfd, "I got your message\n", 19);
-	if (n < 0) {
-		perror("write");
-		exit(EXIT_FAILURE);
+		// Write message back
+		fprintf(stdout, "Here is the message: %s\n", buffer);
+		n = write(newsockfd, "I got your message\n", 19);
+		if (n < 0) {
+			perror("write");
+			exit(EXIT_FAILURE);
+		}
 	}
 
+	fprintf(stdout, "Closing sockets...\n");
+	
 	close(sockfd);
 	close(newsockfd);
+
+	fprintf(stdout, "Sockets closed. Exiting...\n");
+
 	return 0;
 }
 

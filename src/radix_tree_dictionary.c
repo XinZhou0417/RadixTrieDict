@@ -11,9 +11,12 @@ radix_tree_dictionary.c :
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <cjson/cJSON.h>
 
 #include "radix_tree_dictionary.h"
 #include "my_stack.h"
+#include "my_queue.h"
+#include "my_bool.h"
 
 #define BIT_PER_CHAR 8
 #define INITIAL_LIST_SIZE 2
@@ -577,5 +580,146 @@ void freeRDict(RDictionary* rDict, void (*fFreeData)(void*)) {
 }
 
 
+/**
+ * @brief Check if a node is the parent of another node
+ * 
+ * @param child
+ * @param possibleParent
+ * @return TRUE if the possibleParent is the parent of the child; otherwise FALSE
+ */
+BOOL isParent(RNode* child, RNode* possibleParent) {
+    if (possibleParent->branchA == child || possibleParent->branchB == child) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+
+#define MAX_NODES_IN_JSON 30
+
+typedef struct RNodeJSONObj RNodeJSONObject;
+struct RNodeJSONObj {
+    RNode* node;
+    cJSON* cjsonNode;
+    cJSON* prefix;
+    cJSON* prefixBits;
+    cJSON* data;
+    cJSON* pid;
+    cJSON* nid;
+    cJSON* masked;
+
+};
+
+void freeRNodeJSONObject(RNodeJSONObject* obj) {
+    cJSON_Delete(obj->cjsonNode);
+    cJSON_Delete(obj->prefix);
+    cJSON_Delete(obj->prefixBits);
+    cJSON_Delete(obj->data);
+    cJSON_Delete(obj->pid);
+    cJSON_Delete(obj->nid);
+    cJSON_Delete(obj->masked);
+    free(obj);
+}
+
+/**
+ * @brief Convert a radix tree dictionary to a cJSON object using BFS with Queue
+ * @note The maximum number of nodes in the JSON object is limited to {MAX_NODES_IN_JSON}.
+ * 
+ * @param rDict 
+ * @param stringifyData method used to convert data entries to string
+ * @return A JSON string, representing the radix tree dictionary.
+ */
+char* rDict2Json(RDictionary* rDict, char* (*stringifyData)(void*)) {
+    cJSON* trie = cJSON_CreateObject();
+    cJSON* dict = cJSON_CreateArray();
+    cJSON_AddItemToObject(trie, "radix_tree", dict);
+
+    Queue* queue = newQueue();
+    enqueue(queue, rDict->root);
+
+    RNodeJSONObject* chosenNodes[MAX_NODES_IN_JSON];
+
+    int nodeNum = 0;
+    while (getQueueSize(queue) != 0 && nodeNum < MAX_NODES_IN_JSON) {
+        RNode* currentNode = (RNode*) dequeue(queue);
+
+        RNodeJSONObject* newNode = (RNodeJSONObject*) malloc(sizeof(RNodeJSONObject));
+        assert(newNode);
+        chosenNodes[nodeNum] = newNode;
+        cJSON* nid = cJSON_CreateNumber(nodeNum);
+        newNode->nid = nid;
+
+        newNode->node = currentNode;
+        
+        cJSON* node = cJSON_CreateObject();
+        newNode->cjsonNode = node;
+
+        cJSON_AddItemToArray(dict, node);
+
+        cJSON* prefix = cJSON_CreateString(currentNode->prefix);
+        assert(prefix);
+        newNode->prefix = prefix;
+        cJSON* prefixBits = cJSON_CreateNumber(currentNode->prefixBits);
+        assert(prefixBits);
+        newNode->prefixBits = prefixBits;
+
+        cJSON_AddItemToObject(node, "prefix", prefix);
+        cJSON_AddItemToObject(node, "prefixBits", prefixBits);
+
+        if (nodeNum != 0) {
+            for (int i = 0; i < nodeNum; i++) {
+                if (isParent(currentNode, chosenNodes[i]->node)) {
+                    cJSON* pid = cJSON_CreateNumber(i);
+                    assert(pid);
+                    newNode->pid = pid;
+                    cJSON_AddItemToObject(node, "pid", pid);
+                    break;
+                }
+            }
+        }
+
+        cJSON* list = cJSON_CreateArray();
+        cJSON_AddItemToObject(node, "data", list);
+        for (size_t i = 0; i < currentNode->recordNum; i++) {
+            cJSON* data = cJSON_CreateString(stringifyData(currentNode->list[i]));
+            cJSON_AddItemToArray(list, data);
+        }
+
+        if (currentNode->branchA != NULL) {
+            enqueue(queue, currentNode->branchA); 
+        }
+        if (currentNode->branchB != NULL) {
+            enqueue(queue, currentNode->branchB);
+        }
+
+        nodeNum ++;
+    }
+
+    for (int i = 0; i < nodeNum; i++) {
+        RNodeJSONObject* obj = chosenNodes[i];
+        RNode* node = obj->node;
+        BOOL masked = FALSE;
+        if (node->branchA != NULL && node->branchB != NULL) {
+            for (int j = i + 1; j < nodeNum && masked == FALSE; j++) {
+                if (isParent(chosenNodes[j]->node, node)) {
+                    masked = TRUE;
+                }
+            }
+        }
+        cJSON* maskedJson = cJSON_CreateBool(masked);
+        assert(maskedJson);
+        obj->masked = maskedJson;
+        cJSON_AddItemToObject(obj->cjsonNode, "masked", maskedJson);
+    }
+
+    free(queue);
+    char* result = cJSON_Print(trie);
+    for (int i = 0; i < nodeNum; i++) {
+        freeRNodeJSONObject(chosenNodes[i]);
+    }
+    cJSON_Delete(trie);
+
+    return result;
+}
 
 
