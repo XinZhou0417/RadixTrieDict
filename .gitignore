@@ -1,0 +1,10 @@
+.vscode
+.idea
+.local
+tests
+
+*/*.o
+*/*.out
+*/*.exe
+*/*.a
+*/*.so
