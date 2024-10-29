@@ -4,9 +4,8 @@ LDIR = ./lib
 BDIR = ./bin
 SDIR = ./src
 
+# Create the directory for target if it doesn't exist
 dir_guard=@mkdir -p $(@D)
-
-OBJ = 
 
 CC = gcc
 CFLAGS = -Wall -g -I$(IDIR)
