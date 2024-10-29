@@ -1,41 +1,29 @@
-# Fill this makefile with the makefile format instructions to 
-#   build your program.
+IDIR = ./include
+ODIR = ./build
+LDIR = ./lib
+BDIR = ./bin
+SDIR = ./src
+
+dir_guard=@mkdir -p $(@D)
+
+OBJ = 
+
 CC = gcc
-CFLAGS = -g -Wall
-LIB = 
+CFLAGS = -Wall -g -I$(IDIR)
 
-SRC1 = driver.c data.c dictionary.c
-OBJ1 = $(SRC1:.c=.o)
+OBJ = $(ODIR)/my_stack.o $(ODIR)/data.o $(ODIR)/dictionary.o $(ODIR)/sorted_array_dictionary.o $(ODIR)/radix_tree_dictionary.o $(ODIR)/driver.o 
 
-SRC2 = driver.c data.c dictionary.c sorted_array_dictionary.c
-OBJ2 = $(SRC2:.c=.o)
+$(ODIR)/%.o : $(SDIR)/%.c
+	$(dir_guard)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
-SRC3 = driver.c data.c dictionary.c sorted_array_dictionary.c my_stack.c radix_tree_dictionary.c
-OBJ3 = $(SRC3:.c=.o)
+$(BDIR)/driver : $(OBJ)
+	$(dir_guard)
+	$(CC) -o $@ $^ $(CFLAGS)
 
-all : dict1 dict2 dict3
+all: $(BDIR)/driver
 
-dict1: $(OBJ1)
-	$(CC) $(CFLAGS) -o dict1 $(OBJ1) $(LIB)
-
-dict2: $(OBJ2) 
-	$(CC) $(CFLAGS) -o dict2 $(OBJ2) $(LIB)
-
-dict3: $(OBJ3) 
-	$(CC) $(CFLAGS) -o dict3 $(OBJ3) $(LIB)
-
-
-driver.o: driver.c data.h dictionary.h sorted_array_dictionary.h radix_tree_dictionary.h
-
-data.o: data.c data.h
-
-dictionary.o: dictionary.c dictionary.h
-
-sorted_array_dictionary.o: sorted_array_dictionary.c sorted_array_dictionary.h
-
-my_stack.o: my_stack.c my_stack.h
-
-radix_tree_dictionary.o: radix_tree_dictionary.c radix_tree_dictionary.h my_stack.h
+.PHONY: clean
 
 clean:
-	rm -f *.o dict1 dict2 dict3
+	rm -f $(ODIR)/*.o $(BDIR)/driver
