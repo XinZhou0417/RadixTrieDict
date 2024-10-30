@@ -17,6 +17,7 @@ radix_tree_dictionary.c :
 #include "my_stack.h"
 #include "my_queue.h"
 #include "my_bool.h"
+#include "utils.h"
 
 #define BIT_PER_CHAR 8
 #define INITIAL_LIST_SIZE 2
@@ -54,15 +55,6 @@ struct RadixTree {
 
 size_t modulo(size_t divident, size_t divisor) {
     return divident % divisor;
-}
-
-
-size_t ceiling(size_t dividend, size_t divisor) {
-    if (modulo(dividend, divisor) == 0) {
-        return dividend / divisor;
-    } else {
-        return dividend / divisor + 1;
-    }
 }
 
 
@@ -231,13 +223,56 @@ void sliceKey(BYTE* dest, size_t destBits, BYTE* src, size_t srcBits, size_t sta
 
 
 /**
+ * @brief Free the spaces used by the execution path.
+ * 
+ * @param execPathQueue
+ */
+void freeExecPath(Queue* execPathQueue) {
+    while (getQueueSize(execPathQueue) != 0) {
+        char* step = (char*) dequeue(execPathQueue);
+        // if the step is a number, it's a malloced string, free it.
+        if (step[0] >= '0' && step[0] <= '9') {
+            free(step);
+        }
+    }
+    free(execPathQueue);
+}
+
+
+/**
+ * @brief construct the execution path from the queue.
+ * 
+ * @param execPathQueue
+ * @return char* 
+ */
+char* constructExecPath(Queue* execPathQueue) {
+    size_t queueSize = getQueueSize(execPathQueue);
+    char** steps = (char**) malloc(sizeof(char*) * queueSize);
+    assert(steps);
+    char* execPath = concatMultipleStrings(steps, queueSize, '\0');
+    freeExecPath(execPathQueue);
+    return execPath;
+}
+
+
+
+
+/**
  * @brief Insert a new data item with its key. '\0' at the end of strings will be counted in inserting process.
  * 
  * @param rDict 
  * @param key 
  * @param data 
+ * @param execPath: A string representing the path of the execution in the radix tree, pass NULL if not needed.
  */
-void rDictInsert(RDictionary* rDict, char* key, void* data) {
+void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
+
+    Queue* execPathQueue;
+    if (execPath != NULL) {
+        execPathQueue = newQueue();
+        enqueue(execPathQueue, EXEC_PATH_ROOT);
+    }
+
     int byteNum = strlen(key) + 1;
     if (rDict->root == NULL) {
         // '\0' is also counted
@@ -266,6 +301,10 @@ void rDictInsert(RDictionary* rDict, char* key, void* data) {
         
         int bitCount = 0;
         int cmpResult = bitCompare(tmpKey, tmpKeyBitNum, currentPrefix, currentPrefixBitNum, &bitCount);
+
+        if (execPath != NULL) {
+            enqueue(execPathQueue, my_itoa(bitCount));
+        }
 
         /* 
         Possible cases after the comparison:
@@ -323,7 +362,12 @@ void rDictInsert(RDictionary* rDict, char* key, void* data) {
             BYTE bitFromSlicedPrefix = getBitFromKey(slicedPrefix, slicedPrefixBitNum, 0);
             BYTE bitFromSlicedTmpKey = getBitFromKey(slicedTmpKey, slicedTmpKeyBitNum, 0);
 
-            if (bitFromSlicedPrefix < bitFromSlicedTmpKey) {
+            BOOL createNewRightChild = bitFromSlicedPrefix < bitFromSlicedTmpKey;
+            if (execPath != NULL) {
+                enqueue(execPathQueue, createNewRightChild ? EXEC_PATH_NEW_RIGHT : EXEC_PATH_NEW_LEFT);
+            }
+
+            if (createNewRightChild) {
                 currentNode->branchA = slicedPrefixNode;
                 currentNode->branchB = slicedTmpKeyNode;
             } else {
@@ -351,10 +395,17 @@ void rDictInsert(RDictionary* rDict, char* key, void* data) {
                         assert(currentNode->branchA->list);
                         currentNode->branchA->list[0] = data;
                         currentNode->branchA->recordNum += 1;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_MATCH);
+                            enqueue(execPathQueue, EXEC_PATH_NEW_LEFT);
+                        }
                         break;
                     } else {
                         // Search in branchA
                         currentNode = currentNode->branchA;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_LEFT);
+                        }
                         continue;
                     }
                 } else { // first bit of the sliced key is 1
@@ -365,15 +416,25 @@ void rDictInsert(RDictionary* rDict, char* key, void* data) {
                         assert(currentNode->branchB->list);
                         currentNode->branchB->list[0] = data;
                         currentNode->branchB->recordNum += 1;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_MATCH);
+                            enqueue(execPathQueue, EXEC_PATH_NEW_RIGHT);
+                        }
                         break;
                     } else {
                         // Search in branchB
                         currentNode = currentNode->branchB;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_NEW_RIGHT);
+                        }
                         continue;
                     }
                 }
                 
             } else { // bitcount == currentPrefixBitNum == tmpKeyBitNum, both two keys has been finished.
+                if (execPath != NULL) {
+                    enqueue(execPathQueue, EXEC_PATH_MATCH);
+                }
                 if (currentNode->recordNum == currentNode->listSize) {
                     currentNode->listSize *= 2;
                     currentNode->list = (void**) realloc(currentNode->list, (currentNode->listSize) * sizeof(void*));
@@ -383,6 +444,9 @@ void rDictInsert(RDictionary* rDict, char* key, void* data) {
                 break;
             }
         }
+    }
+    if (execPath != NULL) {
+        *execPath = constructExecPath(execPathQueue);
     }
     free(tmpKey);
 }
@@ -438,11 +502,14 @@ void** collectData(RNode* node, int* num) {
  * @param comparedStr number of strings compared
  * @param comparedChar number of char compared
  * @param comparedBit number of bit compared
+ * @param execPath A string representing the path of the execution in the radix tree, pass NULL if not needed.
  * @return all data records that matches the given prefix 
  */
 void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
-                    int* comparedStr, int* comparedChar, int* comparedBit) {
+                    int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
     
+
+
     void** matchedList = NULL;
     *matchedNum = 0;
     *comparedStr = 0;
@@ -456,6 +523,16 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
 
     RNode* currentNode = rDict->root;
 
+    Queue* execPathQueue;
+    if (execPath != NULL) {
+        execPathQueue = newQueue();
+        if (currentNode == NULL) {
+            enqueue(execPathQueue, EXEC_PATH_NOT_MATCH);
+        } else {
+            enqueue(execPathQueue, EXEC_PATH_ROOT);
+        }
+    }
+
     while (currentNode != NULL) {
         int tmpBitCount = 0;
         BYTE* currentPrefix = currentNode->prefix;
@@ -464,6 +541,10 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
         int cmpResult = bitCompare(key, keyBitNum, currentPrefix, currentPrefixBitNum, &tmpBitCount);
         (*comparedBit) += tmpBitCount;
         (*comparedChar) += ceiling(tmpBitCount, BIT_PER_CHAR);
+
+        if (execPath != NULL) {
+            enqueue(execPathQueue, my_itoa(tmpBitCount));
+        }
 
         /*
         There are three cases after comparison:
@@ -476,11 +557,17 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
         */
         if (cmpResult == FOUND_DIFFERENCE) { // Bitwise difference has been found.
             // No matching records, Search ended!
+            if (execPath != NULL) {
+                enqueue(execPathQueue, EXEC_PATH_NOT_MATCH);
+            }
             break;
         } else { // No bitwise difference has been found yet.
             if (tmpBitCount == keyBitNum) { // key is finished.
                 // traverse all the child nodes of currentNode to gather matched data.
                 matchedList = collectData(currentNode, matchedNum);
+                if (execPath != NULL) {
+                    enqueue(execPathQueue, EXEC_PATH_MATCH);
+                }
                 break;
             } else { // key is not finished but currentPrefix is finished.
                 size_t slicedBitNum = keyBitNum - tmpBitCount;
@@ -493,20 +580,32 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
                 BYTE firstBitOfSlicedKey = getBitFromKey(slicedKey, slicedBitNum, 0);
                 if (firstBitOfSlicedKey == BIT_ZERO) {
                     if (currentNode->branchA == NULL) {
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_NOT_MATCH);
+                        }
                         // No matching records, Search ended!
                         break;
                     } else {
                         // search in branchA
                         currentNode = currentNode->branchA;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_LEFT);
+                        }
                         continue;
                     }
                 } else { // first bit of sliced key is 1
                     if (currentNode->branchB == NULL) {
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_NOT_MATCH);
+                        }
                         // No matching records, Search ended!
                         break;
                     } else {
                         // search in branchA
                         currentNode = currentNode->branchB;
+                        if (execPath != NULL) {
+                            enqueue(execPathQueue, EXEC_PATH_RIGHT);
+                        }
                         continue;
                     }
                 }
@@ -514,6 +613,11 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
         }
 
     }
+
+    if (execPath != NULL) {
+        *execPath = constructExecPath(execPathQueue);
+    }
+
     free(key);
 
     // (*comparedChar) = (*comparedBit) / BIT_PER_CHAR;
@@ -656,7 +760,7 @@ char* rDict2Json(RDictionary* rDict, char* (*stringifyData)(void*)) {
 
         cJSON_AddItemToArray(dict, node);
 
-        cJSON* prefix = cJSON_CreateString(currentNode->prefix);
+        cJSON* prefix = cJSON_CreateString((char*) currentNode->prefix);
         assert(prefix);
         newNode->prefix = prefix;
         cJSON* prefixBits = cJSON_CreateNumber(currentNode->prefixBits);
@@ -681,7 +785,12 @@ char* rDict2Json(RDictionary* rDict, char* (*stringifyData)(void*)) {
         cJSON* list = cJSON_CreateArray();
         cJSON_AddItemToObject(node, "data", list);
         for (size_t i = 0; i < currentNode->recordNum; i++) {
-            cJSON* data = cJSON_CreateString(stringifyData(currentNode->list[i]));
+            cJSON* data;
+            if (stringifyData == NULL) {
+                data = cJSON_CreateString((char*) currentNode->list[i]);
+            } else {
+                data = cJSON_CreateString(stringifyData(currentNode->list[i]));
+            }
             cJSON_AddItemToArray(list, data);
         }
 

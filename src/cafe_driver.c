@@ -104,7 +104,7 @@ void* readData(char* dataFilename, int stage){
         } else if (stage == SORTED_ARRAY) {
             sDictInsert((SDictionary*) dict, key, cafe, cmpTradingName);
         } else {
-            rDictInsert((RDictionary*) dict, key, cafe);
+            rDictInsert((RDictionary*) dict, key, cafe, NULL);
             free(key);
         }
     }
@@ -142,7 +142,7 @@ void queryDict(char* outFilename, void* dict, int stage) {
                                             &comparedCharNum, cmpTradingNameAndCount);
             comparedBitNum = BIT_PER_CHAR * comparedCharNum;
         } else { // Radix tree
-            queryResult = prefixMatching((RDictionary*) dict, key, &matchCount, &comparedStringNum, &comparedCharNum, &comparedBitNum);
+            queryResult = prefixMatching((RDictionary*) dict, key, &matchCount, &comparedStringNum, &comparedCharNum, &comparedBitNum, NULL);
         }
         assert(queryResult);
 

@@ -11,9 +11,10 @@ CC = gcc
 CFLAGS = -Wall -g -I$(IDIR)
 LIBS = -lcjson
 
-OBJ = $(ODIR)/my_stack.o $(ODIR)/my_queue.o \
+OBJ = $(ODIR)/my_stack.o $(ODIR)/my_queue.o $(ODIR)/utils.o \
 	$(ODIR)/dictionary.o $(ODIR)/sorted_array_dictionary.o $(ODIR)/radix_tree_dictionary.o \
 	$(ODIR)/cafe_data.o $(ODIR)/cafe_driver.o \
+	$(ODIR)/notebook_driver.o \
 	$(ODIR)/server.o
 
 $(ODIR)/%.o : $(SDIR)/%.c
