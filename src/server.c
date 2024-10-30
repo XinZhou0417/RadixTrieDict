@@ -11,14 +11,31 @@
 #include <string.h>
 #include <unistd.h>
 #include <cjson/cJSON.h>
+#include <sys/ioctl.h>
+#include <sys/poll.h>
+#include <errno.h>
+
+#include "notebook_driver.h"
+#include "my_bool.h"
+
+#define MAX_CLIENTS 25
+#define BUFFER_SIZE 256
 
 int create_listening_socket(char* service);
+void add_new_client(int newsockfd, struct pollfd fds[], int* nfds);
+void delete_client(int i, struct pollfd fds[], int* nfds);
+void* get_sockaddr(struct sockaddr* sa);
+void initialiseFds(struct pollfd fds[], int nfds, int maxClients);
 
 int main(int argc, char** argv) {
-	int sockfd, newsockfd, n, port;
-	char buffer[256], ip[INET_ADDRSTRLEN];
-	struct sockaddr_in client_addr;
-	socklen_t client_addr_size;
+	int sockfd, newsockfd;
+	char buffer[BUFFER_SIZE];
+	struct pollfd fds[MAX_CLIENTS];
+	int timeout;
+	int nfds = 1;
+	socklen_t addrlen;
+	struct sockaddr_storage remoteaddr; // Client address
+	char remoteIP[INET_ADDRSTRLEN];
 
 	if (argc < 2) {
 		fprintf(stderr, "ERROR, no port provided\n");
@@ -41,49 +58,149 @@ int main(int argc, char** argv) {
 
 	fprintf(stdout, "Started listening. \nReady.\n");
 
-	// Accept a connection - blocks until a connection is ready to be accepted
-	// Get back a new file descriptor to communicate on
-	client_addr_size = sizeof client_addr;
-	newsockfd = accept(sockfd, (struct sockaddr*)&client_addr, &client_addr_size);
-	if (newsockfd < 0) {
-		perror("accept");
-		exit(EXIT_FAILURE);
-	}
+	// Set up the pollfd structure
+	memset(fds, 0 , sizeof(fds));
+	fds[0].fd = sockfd;
+	fds[0].events = POLLIN;
 
-	// Print ipv4 peer information (can be removed)
-	getpeername(newsockfd, (struct sockaddr*)&client_addr, &client_addr_size);
-	inet_ntop(client_addr.sin_family, &client_addr.sin_addr, ip,
-			  INET_ADDRSTRLEN);
-	port = ntohs(client_addr.sin_port);
-	fprintf(stdout, "new connection from %s:%d on socket %d\n", ip, port, newsockfd);
+	initialiseFds(fds, nfds, MAX_CLIENTS);
 
-	while (1) {
-		// Read characters from the connection, then process
-		n = read(newsockfd, buffer, 255); // n is number of characters read
-		if (n < 0) {
-			perror("read");
-			exit(EXIT_FAILURE);
+	timeout = (2500);
+
+	for (;;) {
+		printf("Number of clients: %d\n", nfds);
+
+		// If timeout happens, poll() will return 0
+		int poll_count = poll(fds, nfds, timeout);
+		if (poll_count < 0) {
+			perror("poll() failed");
+			break;
 		}
-		// Null-terminate string
-		buffer[n] = '\0';
-
-		// Write message back
-		fprintf(stdout, "Here is the message: %s\n", buffer);
-		n = write(newsockfd, "I got your message\n", 19);
-		if (n < 0) {
-			perror("write");
-			exit(EXIT_FAILURE);
+		printf("Iterating through poll() results...\n");
+		for (int i = 0; i < nfds ;i++) {
+			if (fds[i].revents & POLLIN) {
+				printf("Event caught on socket %d\n", fds[i].fd);
+				// sockfd is the listening socket
+				// If it is readable, it means we have a new connection
+				if (fds[i].fd == sockfd) {
+					addrlen = sizeof remoteaddr;
+					newsockfd = accept(sockfd, (struct sockaddr*)&remoteaddr, &addrlen);
+					if (newsockfd < 0) {
+						perror("accept() failed");
+					} else {
+						add_new_client(newsockfd, fds, &nfds);
+						printf("Pollserver: new connection from %s on socket %d\n", 
+								inet_ntop(remoteaddr.ss_family, get_sockaddr((struct sockaddr*) &remoteaddr), remoteIP, INET_ADDRSTRLEN), 
+								newsockfd);
+					}
+				} else {
+					// The coming data is not from the listening socket, so it is from an existing client
+					// int nbytes = recv(fds[i].fd, buffer, sizeof buffer, 0);
+					int sender_fd = fds[i].fd;
+					char* readPool = NULL;
+					size_t readPoolSize = 0; // Total size of readPool
+					BOOL readComplete = FALSE;
+					while (!readComplete) {
+						errno = 0;
+						int nbytes = recv(sender_fd, buffer, sizeof buffer, 0);
+						if (nbytes <= 0) {
+							if (errno == EWOULDBLOCK) {
+								// No more data to read
+								readPool = realloc(readPool, readPoolSize + 1);
+								readPool[readPoolSize] = '\0';
+								readComplete = TRUE;
+								continue;
+							} else {
+								printf("Pollserver: recv() failed\n");
+								perror("recv() failed");
+								close(fds[i].fd);
+								delete_client(i, fds, &nfds);
+								break;
+							}
+						} else {
+							printf("Pollserver: received %d bytes from socket %d\n", nbytes, sender_fd);
+							readPool = realloc(readPool, readPoolSize + nbytes);
+							memcpy(readPool + readPoolSize, buffer, nbytes);
+						}
+					}
+					printf("Pollserver: received message: %s\n", readPool);
+					// TODO: Process the message
+				}
+			}
 		}
+		printf("Iteration done.\n");
 	}
 
 	fprintf(stdout, "Closing sockets...\n");
 	
 	close(sockfd);
-	close(newsockfd);
 
 	fprintf(stdout, "Sockets closed. Exiting...\n");
 
 	return 0;
+}
+
+
+/**
+ * @brief Initialise the file descriptors, set all to -1
+ * 
+ * @param fds
+ * @param nfds
+ * @return void
+ */
+void initialiseFds(struct pollfd fds[], int startIdx, int maxClients) {
+	for (int i = startIdx; i < maxClients; i++) {
+		fds[i].fd = -1;
+	}
+}
+
+
+/**
+ * @brief Add a new client to the list of file descriptors
+ * 
+ * @param newsockfd
+ * @param fds
+ * @param nfds
+ * @return void
+ */
+void add_new_client(int newsockfd, struct pollfd fds[], int* nfds) {
+	int i;
+	for (i = 1; i < MAX_CLIENTS; i++) {
+		if (fds[i].fd == -1) {
+			fds[i].fd = newsockfd;
+			fds[i].events = POLLIN;
+			(*nfds)++;
+			break;
+		}
+	}
+}
+
+
+/**
+ * @brief Delete a client from the list of file descriptors
+ * 
+ * @param i
+ * @param fds
+ * @param nfds
+ * @return void
+ */
+void delete_client(int i, struct pollfd fds[], int* nfds) {
+	fds[i].fd = -1;
+	(*nfds)--;
+}
+
+
+/**
+ * @brief Get the sockaddr, IPv4 or IPv6
+ * 
+ * @param sa
+ * @return void*
+ */
+void* get_sockaddr(struct sockaddr* sa) {
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 int create_listening_socket(char* service) {
@@ -119,6 +236,15 @@ int create_listening_socket(char* service) {
 		perror("setsockopt");
 		exit(EXIT_FAILURE);
 	}
+
+	// Set socket to be nonblocking,
+	// all of the sockets for the incoming connections will also be nonblocking
+	// since they will inherit that state from the listening socket
+	if (ioctl(sockfd, FIONBIO, (char *)&re) < 0) {
+		perror("ioctl() failed");
+		exit(EXIT_FAILURE);
+	}
+
 	// Bind address to the socket
 	if (bind(sockfd, res->ai_addr, res->ai_addrlen) < 0) {
 		perror("bind");

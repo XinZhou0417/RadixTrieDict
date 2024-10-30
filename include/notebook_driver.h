@@ -1,3 +1,6 @@
+#pragma once
+#include "radix_tree_dictionary.h"
+
 /**
  * @brief Get a JSON string representing the notebook.
  * 
