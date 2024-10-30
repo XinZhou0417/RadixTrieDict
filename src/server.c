@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include <sys/poll.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include "notebook_driver.h"
 #include "my_bool.h"
@@ -26,8 +27,12 @@ void add_new_client(int newsockfd, struct pollfd fds[], int* nfds);
 void delete_client(int i, struct pollfd fds[], int* nfds);
 void* get_sockaddr(struct sockaddr* sa);
 void initialiseFds(struct pollfd fds[], int nfds, int maxClients);
+int set_nonblocking(int sockfd);
 
 int main(int argc, char** argv) {
+
+	RDictionary* notebookInstance = createNotebook();
+
 	int sockfd, newsockfd;
 	char buffer[BUFFER_SIZE];
 	struct pollfd fds[MAX_CLIENTS];
@@ -88,6 +93,12 @@ int main(int argc, char** argv) {
 					if (newsockfd < 0) {
 						perror("accept() failed");
 					} else {
+						// Set the new socket to non-blocking
+						if (set_nonblocking(newsockfd) < 0) {
+							perror("set_nonblocking() failed");
+							close(newsockfd);
+							continue;
+						}
 						add_new_client(newsockfd, fds, &nfds);
 						printf("Pollserver: new connection from %s on socket %d\n", 
 								inet_ntop(remoteaddr.ss_family, get_sockaddr((struct sockaddr*) &remoteaddr), remoteIP, INET_ADDRSTRLEN), 
@@ -104,14 +115,13 @@ int main(int argc, char** argv) {
 						errno = 0;
 						int nbytes = recv(sender_fd, buffer, sizeof buffer, 0);
 						if (nbytes <= 0) {
-							if (errno == EWOULDBLOCK) {
+							if (errno == EAGAIN || errno == EWOULDBLOCK) {
 								// No more data to read
 								readPool = realloc(readPool, readPoolSize + 1);
 								readPool[readPoolSize] = '\0';
 								readComplete = TRUE;
 								continue;
 							} else {
-								printf("Pollserver: recv() failed\n");
 								perror("recv() failed");
 								close(fds[i].fd);
 								delete_client(i, fds, &nfds);
@@ -121,10 +131,23 @@ int main(int argc, char** argv) {
 							printf("Pollserver: received %d bytes from socket %d\n", nbytes, sender_fd);
 							readPool = realloc(readPool, readPoolSize + nbytes);
 							memcpy(readPool + readPoolSize, buffer, nbytes);
+							readPoolSize += nbytes;
 						}
 					}
 					printf("Pollserver: received message: %s\n", readPool);
 					// TODO: Process the message
+					cJSON* jsonStr = cJSON_Parse(readPool);
+					if (jsonStr == NULL) {
+						printf("Pollserver: failed to parse JSON string\n");
+					} else {
+						cJSON* response = processRequest(jsonStr, notebookInstance);
+						char* responseStr = cJSON_Print(response);
+						printf("Pollserver: response: %s\n", responseStr);
+						send(sender_fd, responseStr, strlen(responseStr), 0);
+						free(responseStr);
+						cJSON_Delete(response);
+						cJSON_Delete(jsonStr);
+					}
 				}
 			}
 		}
@@ -203,6 +226,21 @@ void* get_sockaddr(struct sockaddr* sa) {
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+// Define the set_nonblocking function
+int set_nonblocking(int sockfd) {
+    int flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl failed");
+        return -1;
+    }
+    flags |= O_NONBLOCK;
+    if (fcntl(sockfd, F_SETFL, flags) == -1) {
+        perror("fcntl failed");
+        return -1;
+    }
+    return 0;
+}
+
 int create_listening_socket(char* service) {
 	int re, s, sockfd;
 	struct addrinfo hints, *res;
@@ -228,6 +266,16 @@ int create_listening_socket(char* service) {
 		exit(EXIT_FAILURE);
 	}
 
+	// Set socket to be nonblocking,
+		/* The following two lines are not true, it turns out that new fds also need to be manually set as non-blocking */
+		// all of the sockets for the incoming connections will also be nonblocking
+		// since they will inherit that state from the listening socket
+	// fcntl called twice to set and get flags
+	if (set_nonblocking(sockfd) < 0) {
+		perror("set_nonblocking");
+		exit(EXIT_FAILURE);
+	}
+
 	fprintf(stdout, "Socket created, binding address...\n");
 
 	// Reuse port if possible
@@ -237,13 +285,6 @@ int create_listening_socket(char* service) {
 		exit(EXIT_FAILURE);
 	}
 
-	// Set socket to be nonblocking,
-	// all of the sockets for the incoming connections will also be nonblocking
-	// since they will inherit that state from the listening socket
-	if (ioctl(sockfd, FIONBIO, (char *)&re) < 0) {
-		perror("ioctl() failed");
-		exit(EXIT_FAILURE);
-	}
 
 	// Bind address to the socket
 	if (bind(sockfd, res->ai_addr, res->ai_addrlen) < 0) {

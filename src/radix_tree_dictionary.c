@@ -737,6 +737,12 @@ char* rDict2Json(RDictionary* rDict, char* (*stringifyData)(void*)) {
     cJSON* trie = cJSON_CreateObject();
     cJSON* dict = cJSON_CreateArray();
     cJSON_AddItemToObject(trie, "radix_tree", dict);
+    if (rDict->root == NULL) {
+        char* result = cJSON_Print(trie);
+        cJSON_Delete(dict);
+        cJSON_Delete(trie);
+        return result;
+    }
 
     Queue* queue = newQueue();
     enqueue(queue, rDict->root);
@@ -826,6 +832,7 @@ char* rDict2Json(RDictionary* rDict, char* (*stringifyData)(void*)) {
     for (int i = 0; i < nodeNum; i++) {
         freeRNodeJSONObject(chosenNodes[i]);
     }
+    cJSON_Delete(dict);
     cJSON_Delete(trie);
 
     return result;

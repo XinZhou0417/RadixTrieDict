@@ -34,3 +34,19 @@ void insertNotebook(RDictionary* notebook, char* jsonPayload, char** execPath);
  * @return all data records that matches the given prefix
  */
 char** searchNotebook(RDictionary* notebook, char* jsonPayload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
+
+
+/**
+ * @brief Create a new notebook
+ */
+RDictionary* createNotebook();
+
+
+/**
+ * @brief Process a request and return the result in JSON format.
+ * 
+ * @param jsonRequest 
+ * @param notebook 
+ * @return cJSON* 
+ */
+cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook);
