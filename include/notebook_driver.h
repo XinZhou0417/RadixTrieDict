@@ -50,11 +50,3 @@ RDictionary* createNotebook();
  * @return cJSON* 
  */
 cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook);
-
-/**
- * @brief Free the result of a request
- * 
- * @param jsonRequest
- * @param result 
- */
-void freeResult(cJSON* jsonRequest, cJSON* result);

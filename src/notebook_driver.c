@@ -137,29 +137,3 @@ cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook) {
     return NULL;
 }
 
-
-/**
- * @brief Free the result of a request
- * 
- * @param jsonRequest
- * @param result 
- */
-void freeResult(cJSON* jsonRequest, cJSON* result) {
-    cJSON* mode = cJSON_GetObjectItem(jsonRequest, "mode");
-    if (cJSON_IsString(mode) && mode->valuestring != NULL) {
-        if (strcmp(mode->valuestring, "search") == 0) {
-            cJSON* matchedDataArray = cJSON_GetObjectItem(result, "matchedData");
-            if (cJSON_IsArray(matchedDataArray)) {
-                for (int i = 0; i < cJSON_GetArraySize(matchedDataArray); i++) {
-                    cJSON* matchedDataItem = cJSON_GetArrayItem(matchedDataArray, i);
-                    cJSON* list = cJSON_GetObjectItem(matchedDataItem, "list");
-                    if (cJSON_IsArray(list)) {
-                        cJSON_Delete(list);
-                    }
-                }
-                cJSON_Delete(matchedDataArray);
-            }
-        } 
-    }
-    cJSON_free(result);
-}

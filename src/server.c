@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
 						printf("Pollserver: response: %s\n", responseStr);
 						send(sender_fd, responseStr, strlen(responseStr), 0);
 						cJSON_free(responseStr);
-						freeResult(request, response);
+						cJSON_Delete(response);
 						cJSON_free(request);
 					}
 				}
