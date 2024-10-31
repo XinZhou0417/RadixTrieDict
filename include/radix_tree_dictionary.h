@@ -18,6 +18,7 @@ radix_tree_dictionary.h :
 #define EXEC_PATH_NEW_RIGHT     "B"
 #define EXEC_PATH_MATCH         "M"
 #define EXEC_PATH_NOT_MATCH     "N"
+#define EXEC_PATH_ERROR         "E"
 
 
 typedef struct RadixTree RDictionary;

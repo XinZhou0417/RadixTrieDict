@@ -1,9 +1,23 @@
 .vscode
 .idea
 .local
+.venv
+
 tests
 build
 bin
+
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pywz
+*.pycache
+*.pycachefile
+
+DS_Store
 
 */*.o
 */*.out

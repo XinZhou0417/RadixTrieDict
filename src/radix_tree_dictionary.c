@@ -249,6 +249,9 @@ char* constructExecPath(Queue* execPathQueue) {
     size_t queueSize = getQueueSize(execPathQueue);
     char** steps = (char**) malloc(sizeof(char*) * queueSize);
     assert(steps);
+    for (size_t i = 0; i < queueSize; i++) {
+        steps[i] = (char*) dequeue(execPathQueue);
+    }
     char* execPath = concatMultipleStrings(steps, queueSize, '\0');
     freeExecPath(execPathQueue);
     return execPath;
@@ -266,6 +269,9 @@ char* constructExecPath(Queue* execPathQueue) {
  * @param execPath: A string representing the path of the execution in the radix tree, pass NULL if not needed.
  */
 void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
+    printf("Inserting key: %s\n", key);
+    printf("Inserting data: %s\n", (char*) data);
+    printf("is execPath Null? %d\n", execPath == NULL);
 
     Queue* execPathQueue;
     if (execPath != NULL) {
@@ -285,6 +291,9 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
         list[0] = data;
         size_t num = 1;
         rDict->root = getNewNode(prefixBits, prefix, NULL, NULL, list, INITIAL_LIST_SIZE, num);
+        if (execPath != NULL) {
+            *execPath = constructExecPath(execPathQueue);
+        }
         return;
     }
 
