@@ -23,6 +23,13 @@ radix_tree_dictionary.h :
 
 typedef struct RadixTree RDictionary;
 
+// Data structure for searching
+typedef struct MatchedDataStruct MatchedData; 
+struct MatchedDataStruct {
+    char*   key;
+    void** list;
+    int recordNum;
+};
 
 // Radix Tree Dictionary creation.
 RDictionary* createRDict();
@@ -45,14 +52,15 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath);
  * 
  * @param rDict 
  * @param givenKey 
- * @param matchedNum number of data that matches the prefix
+ * @param matchedKeyNum number of keys (strings) that matches the prefix
+ * @param matchedRecordNum number of data entries collected
  * @param comparedStr number of strings compared
  * @param comparedChar number of char compared
  * @param comparedBit number of bit compared
- * @param execPath
+ * @param execPath A string representing the path of the execution in the radix tree, pass NULL if not needed.
  * @return all data records that matches the given prefix 
  */
-void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
+MatchedData** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedKeyNum, int* matchedRecordNum,
                     int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
 
 
