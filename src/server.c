@@ -144,9 +144,9 @@ int main(int argc, char** argv) {
 						char* responseStr = cJSON_Print(response);
 						printf("Pollserver: response: %s\n", responseStr);
 						send(sender_fd, responseStr, strlen(responseStr), 0);
-						free(responseStr);
-						cJSON_Delete(response);
-						cJSON_Delete(jsonStr);
+						cJSON_free(responseStr);
+						cJSON_free(response);
+						cJSON_free(jsonStr);
 					}
 				}
 			}
