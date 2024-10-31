@@ -26,16 +26,14 @@ char* getNotebookTrieJson(RDictionary* notebook) {
  * @param execPath
  * 
  */
-void insertNotebook(RDictionary* notebook, char* jsonPayload, char** execPath) {
+void insertNotebook(RDictionary* notebook, cJSON* payload, char** execPath) {
     char* insertKey = NULL;
     char* data = NULL;
-    cJSON* json = cJSON_Parse(jsonPayload);
-    assert(json);
-    cJSON* insertKeyJSON = cJSON_GetObjectItem(json, "key");
+    cJSON* insertKeyJSON = cJSON_GetObjectItem(payload, "key");
     if (cJSON_IsString(insertKeyJSON) && insertKeyJSON->valuestring != NULL) {
         insertKey = insertKeyJSON->valuestring;
     }
-    cJSON* dataJSON = cJSON_GetObjectItem(json, "data");
+    cJSON* dataJSON = cJSON_GetObjectItem(payload, "data");
     if (cJSON_IsString(dataJSON) && dataJSON->valuestring != NULL) {
         data = dataJSON->valuestring;
     }
@@ -54,11 +52,9 @@ void insertNotebook(RDictionary* notebook, char* jsonPayload, char** execPath) {
  * @param execPath
  * @return all data records that matches the given prefix
  */
-char** searchNotebook(RDictionary* notebook, char* jsonPayload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
+char** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
     char* searchKey = NULL;
-    cJSON* json = cJSON_Parse(jsonPayload);
-    assert(json);
-    cJSON* searchKeyJSON = cJSON_GetObjectItem(json, "key");
+    cJSON* searchKeyJSON = cJSON_GetObjectItem(payload, "key");
     if (cJSON_IsString(searchKeyJSON) && searchKeyJSON->valuestring != NULL) {
         searchKey = searchKeyJSON->valuestring;
     }
@@ -86,34 +82,41 @@ RDictionary* createNotebook() {
 cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook) {
     printf("Processing request...\n");
     cJSON* mode = cJSON_GetObjectItem(jsonRequest, "mode");
+    printf("Mode: %s\n", mode->valuestring);
     if (cJSON_IsString(mode) && mode->valuestring != NULL) {
         if (strcmp(mode->valuestring, "insert") == 0) {
+            printf("Inserting...\n");
             cJSON* payload = cJSON_GetObjectItem(jsonRequest, "payload");
-            if (cJSON_IsString(payload) && payload->valuestring != NULL) {
-                char* execPath = NULL;
-                insertNotebook(notebook, payload->valuestring, &execPath);
-                cJSON* result = cJSON_CreateObject();
-                cJSON_AddStringToObject(result, "execPath", execPath);
-                return result;
+            char* execPath = NULL;
+            if (payload != NULL) {
+                insertNotebook(notebook, payload, &execPath);
+            } else {
+                execPath = EXEC_PATH_ERROR;
             }
+            printf("Result ExecPath: %s\n", execPath);
+            cJSON* result = cJSON_CreateObject();
+            cJSON_AddStringToObject(result, "execPath", execPath);
+            return result;
         } else if (strcmp(mode->valuestring, "search") == 0) {
             cJSON* payload = cJSON_GetObjectItem(jsonRequest, "payload");
-            if (cJSON_IsString(payload) && payload->valuestring != NULL) {
+            char* execPath = NULL;
+            cJSON* result = cJSON_CreateObject();
+            if (payload != NULL) {
                 int matchedNum = 0;
                 int comparedStr = 0;
                 int comparedChar = 0;
                 int comparedBit = 0;
-                char* execPath = NULL;
-                char** queryResult = searchNotebook(notebook, payload->valuestring, &matchedNum, &comparedStr, &comparedChar, &comparedBit, &execPath);
-                cJSON* result = cJSON_CreateObject();
+                char** queryResult = searchNotebook(notebook, payload, &matchedNum, &comparedStr, &comparedChar, &comparedBit, &execPath);
                 cJSON_AddItemToObject(result, "queryResult", cJSON_CreateStringArray((const char**) queryResult, matchedNum));
                 cJSON_AddNumberToObject(result, "matchedNum", matchedNum);
                 cJSON_AddNumberToObject(result, "comparedStr", comparedStr);
                 cJSON_AddNumberToObject(result, "comparedChar", comparedChar);
                 cJSON_AddNumberToObject(result, "comparedBit", comparedBit);
-                cJSON_AddStringToObject(result, "execPath", execPath);
-                return result;
+            } else {
+                execPath = EXEC_PATH_ERROR;
             }
+            cJSON_AddStringToObject(result, "execPath", execPath);
+            return result;
         } else if (strcmp(mode->valuestring, "get_tree") == 0) {
             char* notebookJson = getNotebookTrieJson(notebook);
             cJSON* result = cJSON_CreateObject();

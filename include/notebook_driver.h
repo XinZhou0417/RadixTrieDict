@@ -18,7 +18,7 @@ char* getNotebookTrieJson(RDictionary* notebook);
  * @param execPath
  * 
  */
-void insertNotebook(RDictionary* notebook, char* jsonPayload, char** execPath);
+void insertNotebook(RDictionary* notebook, cJSON* payload, char** execPath);
 
 
 /**
@@ -33,7 +33,7 @@ void insertNotebook(RDictionary* notebook, char* jsonPayload, char** execPath);
  * @param execPath
  * @return all data records that matches the given prefix
  */
-char** searchNotebook(RDictionary* notebook, char* jsonPayload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
+char** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
 
 
 /**
