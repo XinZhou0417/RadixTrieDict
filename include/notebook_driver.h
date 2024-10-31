@@ -33,7 +33,7 @@ void insertNotebook(RDictionary* notebook, cJSON* payload, char** execPath);
  * @param execPath
  * @return all data records that matches the given prefix
  */
-char** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
+MatchedData** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedKeyNum, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath);
 
 
 /**

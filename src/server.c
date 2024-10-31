@@ -136,17 +136,17 @@ int main(int argc, char** argv) {
 					}
 					printf("Pollserver: received message: %s\n", readPool);
 					// TODO: Process the message
-					cJSON* jsonStr = cJSON_Parse(readPool);
-					if (jsonStr == NULL) {
+					cJSON* request = cJSON_Parse(readPool);
+					if (request == NULL) {
 						printf("Pollserver: failed to parse JSON string\n");
 					} else {
-						cJSON* response = processRequest(jsonStr, notebookInstance);
+						cJSON* response = processRequest(request, notebookInstance);
 						char* responseStr = cJSON_Print(response);
 						printf("Pollserver: response: %s\n", responseStr);
 						send(sender_fd, responseStr, strlen(responseStr), 0);
 						cJSON_free(responseStr);
-						cJSON_free(response);
-						cJSON_free(jsonStr);
+						cJSON_Delete(response);
+						cJSON_free(request);
 					}
 				}
 			}

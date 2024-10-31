@@ -45,6 +45,7 @@ struct RadixTreeNode {
     void** list;
     size_t listSize;
     size_t recordNum;
+    char*   key;        // If a new element is inserted, the key (and data) will be stored here in the node.
 };
 
 
@@ -84,6 +85,7 @@ RNode* getNewNode(size_t prefixBits, BYTE* prefix, RNode* branchA, RNode* branch
     newNode->list = list;
     newNode->listSize = listSize;
     newNode->recordNum = recordNum;
+    newNode->key = NULL;
     return newNode;
 }
 
@@ -269,6 +271,11 @@ char* constructExecPath(Queue* execPathQueue) {
  * @param execPath: A string representing the path of the execution in the radix tree, pass NULL if not needed.
  */
 void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
+
+    char* keyBackup = (char*) malloc(strlen(key) + 1);
+    assert(keyBackup);
+    strcpy(keyBackup, key);
+
     printf("Inserting key: %s\n", key);
     printf("Inserting data: %s\n", (char*) data);
     printf("is execPath Null? %d\n", execPath == NULL);
@@ -291,6 +298,7 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
         list[0] = data;
         size_t num = 1;
         rDict->root = getNewNode(prefixBits, prefix, NULL, NULL, list, INITIAL_LIST_SIZE, num);
+        rDict->root->key = keyBackup;
         if (execPath != NULL) {
             *execPath = constructExecPath(execPathQueue);
         }
@@ -351,6 +359,8 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
             RNode* slicedPrefixNode = getNewNode(slicedPrefixBitNum, slicedPrefix, 
                                                 currentNode->branchA, currentNode->branchB, 
                                                 currentNode->list, currentNode->listSize, currentNode->recordNum);
+            slicedPrefixNode->key = currentNode->key;
+            currentNode->key = NULL;
             free(currentPrefix);
             // non-leaf nodes don't store data record
             currentNode->list = NULL;
@@ -362,6 +372,7 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
             BYTE* slicedTmpKey = getBlankKey(slicedTmpKeyBitNum);
             sliceKey(slicedTmpKey, slicedTmpKeyBitNum, tmpKey, tmpKeyBitNum, bitCount - 1);
             RNode* slicedTmpKeyNode = getNewNode(slicedTmpKeyBitNum, slicedTmpKey, NULL, NULL, NULL, INITIAL_LIST_SIZE, 0);
+            slicedTmpKeyNode->key = keyBackup;
             slicedTmpKeyNode->list = (void**) malloc(INITIAL_LIST_SIZE * sizeof(void*));
             assert(slicedTmpKeyNode->list);
             slicedTmpKeyNode->list[0] = data;
@@ -400,6 +411,7 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
                     if (currentNode->branchA == NULL) {
                         // new branch here
                         currentNode->branchA = getNewNode(slicedBitNum, tmpKey, NULL, NULL, NULL, INITIAL_LIST_SIZE, 0);
+                        currentNode->branchA->key = keyBackup;
                         currentNode->branchA->list = (void**) malloc(INITIAL_LIST_SIZE * sizeof(void*));
                         assert(currentNode->branchA->list);
                         currentNode->branchA->list[0] = data;
@@ -421,6 +433,7 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
                     if (currentNode->branchB == NULL) {
                         // new branch here
                         currentNode->branchB = getNewNode(slicedBitNum, tmpKey, NULL, NULL, NULL, INITIAL_LIST_SIZE, 0);
+                        currentNode->branchB->key = keyBackup;
                         currentNode->branchB->list = (void**) malloc(INITIAL_LIST_SIZE * sizeof(void*));
                         assert(currentNode->branchB->list);
                         currentNode->branchB->list[0] = data;
@@ -434,7 +447,7 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
                         // Search in branchB
                         currentNode = currentNode->branchB;
                         if (execPath != NULL) {
-                            enqueue(execPathQueue, EXEC_PATH_NEW_RIGHT);
+                            enqueue(execPathQueue, EXEC_PATH_RIGHT);
                         }
                         continue;
                     }
@@ -465,12 +478,13 @@ void rDictInsert(RDictionary* rDict, char* key, void* data, char** execPath) {
  * @brief collect all data entries from a radix tree node and all its child nodes (using DFS) 
  * 
  * @param node 
- * @param num number of data entries collected
- * @return collected data list 
+ * @param matechedKeyNum number of keys (strings) that matches the prefix
+ * @param recordNum number of data entries collected
  */
-void** collectData(RNode* node, int* num) {
+MatchedData** collectData(RNode* node, int* matchedKeyNum, int* recordNum) {
     size_t collectionSize = MATCHED_LIST_SIZE;
-    void** collection = (void**) malloc(collectionSize * sizeof(void*));
+    size_t collectionItemNum = 0;
+    MatchedData** collection = (MatchedData**) malloc(collectionSize * sizeof(MatchedData*));
     assert(collection);
 
     Stack* stack = newStack();
@@ -484,16 +498,22 @@ void** collectData(RNode* node, int* num) {
             push(stack, currentNode->branchA);
         }
 
-        if (currentNode->branchA == NULL && currentNode->branchB == NULL) {
-            for (size_t i = 0; i < currentNode->recordNum; i++) {
-                if ((*num) == collectionSize) {
-                    collectionSize *= 2;
-                    collection = (void**) realloc(collection, collectionSize * sizeof(void*));
-                    assert(collection);
-                }
-                collection[*num] = currentNode->list[i];
-                (*num) ++;
+        // collect data from the node if it contains data records (i.e. this node represents a key)
+        if (currentNode->recordNum != 0) {
+            if (collectionItemNum == collectionSize) {
+                collectionSize *= 2;
+                collection = (MatchedData**) realloc(collection, collectionSize * sizeof(MatchedData*));
+                assert(collection);
             }
+            MatchedData* matchedData = (MatchedData*) malloc(sizeof(MatchedData));
+            assert(matchedData);
+            matchedData->key = currentNode->key;
+            assert(matchedData->key);
+            (*matchedKeyNum) ++;
+            matchedData->list = currentNode->list;
+            matchedData->recordNum = currentNode->recordNum;
+            collection[collectionItemNum ++] = matchedData;
+            (*recordNum) += currentNode->recordNum;
         }
     }
     free(stack);
@@ -507,20 +527,20 @@ void** collectData(RNode* node, int* num) {
  * 
  * @param rDict 
  * @param givenKey 
- * @param matchedNum number of data that matches the prefix
+ * @param matchedKeyNum number of keys (strings) that matches the prefix
+ * @param matchedRecordNum number of data entries collected
  * @param comparedStr number of strings compared
  * @param comparedChar number of char compared
  * @param comparedBit number of bit compared
  * @param execPath A string representing the path of the execution in the radix tree, pass NULL if not needed.
  * @return all data records that matches the given prefix 
  */
-void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
+MatchedData** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedKeyNum, int* matchedRecordNum,
                     int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
     
-
-
-    void** matchedList = NULL;
-    *matchedNum = 0;
+    MatchedData** matchedList = NULL;
+    *matchedKeyNum = 0;
+    *matchedRecordNum = 0;
     *comparedStr = 0;
     *comparedChar = 0;
     *comparedBit = 0;
@@ -573,7 +593,7 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
         } else { // No bitwise difference has been found yet.
             if (tmpBitCount == keyBitNum) { // key is finished.
                 // traverse all the child nodes of currentNode to gather matched data.
-                matchedList = collectData(currentNode, matchedNum);
+                matchedList = collectData(currentNode, matchedKeyNum, matchedRecordNum);
                 if (execPath != NULL) {
                     enqueue(execPathQueue, EXEC_PATH_MATCH);
                 }
@@ -635,7 +655,7 @@ void** prefixMatching(RDictionary* rDict, char* givenKey, int* matchedNum,
     // "segments" of one particular string.
     (*comparedStr) = 1;
     if (matchedList == NULL) {
-        matchedList = (void*) malloc(MATCHED_LIST_SIZE * sizeof(void*));
+        matchedList = (MatchedData**) malloc(MATCHED_LIST_SIZE * sizeof(MatchedData*));
     }
     return matchedList;
 }
@@ -656,6 +676,9 @@ void freeNode(RNode* node, void (*fFreeData)(void*)) {
     }
     if (node->prefix != NULL) {
         free(node->prefix);
+    }
+    if (node->key != NULL) {
+        free(node->key);
     }
     free(node);
 }

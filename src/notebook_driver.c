@@ -52,14 +52,14 @@ void insertNotebook(RDictionary* notebook, cJSON* payload, char** execPath) {
  * @param execPath
  * @return all data records that matches the given prefix
  */
-char** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
+MatchedData** searchNotebook(RDictionary* notebook, cJSON* payload, int* matchedKeyNum, int* matchedNum, int* comparedStr, int* comparedChar, int* comparedBit, char** execPath) {
     char* searchKey = NULL;
     cJSON* searchKeyJSON = cJSON_GetObjectItem(payload, "key");
     if (cJSON_IsString(searchKeyJSON) && searchKeyJSON->valuestring != NULL) {
         searchKey = searchKeyJSON->valuestring;
     }
     
-    char** queryResult = (char**) prefixMatching(notebook, searchKey, matchedNum, comparedStr, comparedChar, comparedBit, execPath);
+    MatchedData** queryResult = (MatchedData**) prefixMatching(notebook, searchKey, matchedKeyNum, matchedNum, comparedStr, comparedChar, comparedBit, execPath);
     assert(queryResult);
     return queryResult;
 }
@@ -102,16 +102,26 @@ cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook) {
             char* execPath = NULL;
             cJSON* result = cJSON_CreateObject();
             if (payload != NULL) {
-                int matchedNum = 0;
+                int matchedKeyNum = 0;
+                int matchedRecordNum = 0;
                 int comparedStr = 0;
                 int comparedChar = 0;
                 int comparedBit = 0;
-                char** queryResult = searchNotebook(notebook, payload, &matchedNum, &comparedStr, &comparedChar, &comparedBit, &execPath);
-                cJSON_AddItemToObject(result, "queryResult", cJSON_CreateStringArray((const char**) queryResult, matchedNum));
-                cJSON_AddNumberToObject(result, "matchedNum", matchedNum);
+                MatchedData** queryResult = searchNotebook(notebook, payload, &matchedKeyNum, &matchedRecordNum, &comparedStr, &comparedChar, &comparedBit, &execPath);
+                cJSON_AddNumberToObject(result, "matchedKeyNum", matchedKeyNum);
+                cJSON_AddNumberToObject(result, "matchedRecordNum", matchedRecordNum);
                 cJSON_AddNumberToObject(result, "comparedStr", comparedStr);
                 cJSON_AddNumberToObject(result, "comparedChar", comparedChar);
                 cJSON_AddNumberToObject(result, "comparedBit", comparedBit);
+                cJSON* matchedDataArray = cJSON_CreateArray();
+                cJSON_AddItemToObject(result, "matchedData", matchedDataArray);
+                for (int i = 0; i < matchedKeyNum; i++) {
+                    cJSON* matchedDataItem = cJSON_CreateObject();
+                    cJSON_AddStringToObject(matchedDataItem, "key", queryResult[i]->key);
+                    cJSON_AddItemToObject(matchedDataItem, "list", cJSON_CreateStringArray((const char**) queryResult[i]->list, queryResult[i]->recordNum));
+                    cJSON_AddNumberToObject(matchedDataItem, "recordNum", queryResult[i]->recordNum);
+                    cJSON_AddItemToArray(matchedDataArray, matchedDataItem);
+                }
             } else {
                 execPath = EXEC_PATH_ERROR;
             }
@@ -126,3 +136,4 @@ cJSON* processRequest(cJSON* jsonRequest, RDictionary* notebook) {
     }
     return NULL;
 }
+
